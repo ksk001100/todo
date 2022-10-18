@@ -1,5 +1,5 @@
 use anyhow::bail;
-use cli_table::{print_stdout, Cell, Style, Table};
+use cli_table::{format::Justify, print_stdout, Cell, Style, Table};
 use dirs::home_dir;
 use seahorse::{App, Command, Context};
 use std::env;
@@ -199,7 +199,7 @@ impl Todos {
 
     pub fn done(&mut self, id: String) -> anyhow::Result<()> {
         let mut record = self.records.iter_mut().find(|r| r.id == id).unwrap();
-        record.done = "DONE".to_string();
+        record.done = "✓".to_string();
         self.print_list();
         Ok(())
     }
@@ -239,16 +239,16 @@ impl Todos {
             .iter()
             .map(|r| {
                 vec![
-                    r.id.clone().cell(),
+                    r.id.clone().cell().justify(Justify::Center),
                     r.title.clone().cell(),
-                    r.done.clone().cell(),
+                    r.done.clone().cell().justify(Justify::Center),
                 ]
             })
             .table()
             .title(
                 self.headers
                     .iter()
-                    .map(|h| h.to_uppercase().cell().bold(true)),
+                    .map(|h| h.to_uppercase().cell().bold(true).justify(Justify::Center)),
             )
             .bold(true);
         print_stdout(table).unwrap();
