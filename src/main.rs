@@ -170,7 +170,10 @@ impl Todo {
     }
 
     pub fn to_csv(&self) -> String {
-        format!("{},{},{},{},{}", self.id, self.date, self.title, self.url, self.done)
+        format!(
+            "{},{},{},{},{}",
+            self.id, self.date, self.title, self.url, self.done
+        )
     }
 }
 
