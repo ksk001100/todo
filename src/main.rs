@@ -1,7 +1,7 @@
 use anyhow::bail;
 use cli_table::{format::Justify, print_stdout, Cell, Style, Table};
 use dirs::home_dir;
-use seahorse::{App, Command, Context};
+use seahorse::{App, Command, Context, Flag, FlagType};
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -19,14 +19,20 @@ fn main() {
         .command(delete_command())
         .command(done_command())
         .command(clear_command())
+        .flag(
+            Flag::new("all", FlagType::Bool)
+                .alias("a")
+                .description("Show all TODOs"),
+        )
         .action(ls_action);
 
     app.run(args);
 }
 
-fn ls_action(_: &Context) {
+fn ls_action(c: &Context) {
     let todos = Todos::read();
-    todos.print_list();
+    let all = c.bool_flag("all");
+    todos.print_list(all);
 }
 
 fn ls_command() -> Command {
@@ -35,6 +41,11 @@ fn ls_command() -> Command {
         .usage("todo list")
         .alias("ls")
         .alias("l")
+        .flag(
+            Flag::new("all", FlagType::Bool)
+                .alias("a")
+                .description("Show all TODOs"),
+        )
         .action(ls_action)
 }
 
@@ -43,6 +54,16 @@ fn add_command() -> Command {
         .description("Add a TODO")
         .usage("todo add <text>")
         .alias("a")
+        .flag(
+            Flag::new("date", FlagType::String)
+                .alias("d")
+                .description("Date"),
+        )
+        .flag(
+            Flag::new("url", FlagType::String)
+                .alias("u")
+                .description("URL"),
+        )
         .action(|c| {
             let title = if !c.args.is_empty() {
                 c.args.join(" ")
@@ -51,9 +72,12 @@ fn add_command() -> Command {
                 exit(1);
             };
 
+            let date = c.string_flag("date").unwrap_or("".into());
+            let url = c.string_flag("url").unwrap_or("".into());
+
             let mut todos = Todos::read();
 
-            if todos.add(title).is_err() {
+            if todos.add(date, title, url).is_err() {
                 eprintln!("Failed to add.");
                 exit(1);
             }
@@ -128,17 +152,25 @@ fn clear_command() -> Command {
 #[derive(Debug, Clone)]
 struct Todo {
     id: String,
+    date: String,
     title: String,
+    url: String,
     done: String,
 }
 
 impl Todo {
-    pub fn new(id: String, title: String, done: String) -> Self {
-        Self { id, title, done }
+    pub fn new(id: String, date: String, title: String, url: String, done: String) -> Self {
+        Self {
+            id,
+            date,
+            title,
+            url,
+            done,
+        }
     }
 
     pub fn to_csv(&self) -> String {
-        format!("{},{},{}", self.id, self.title, self.done)
+        format!("{},{},{},{},{}", self.id, self.date, self.title, self.url, self.done)
     }
 }
 
@@ -158,7 +190,13 @@ impl Todos {
                 .iter()
                 .map(|b| {
                     let v: Vec<String> = b.split(',').into_iter().map(|r| r.to_string()).collect();
-                    Todo::new(v[0].clone(), v[1].clone(), v[2].clone())
+                    Todo::new(
+                        v[0].clone(),
+                        v[1].clone(),
+                        v[2].clone(),
+                        v[3].clone(),
+                        v[4].clone(),
+                    )
                 })
                 .collect::<Vec<Todo>>()
         } else {
@@ -167,7 +205,13 @@ impl Todos {
 
         let headers = match bufs.first() {
             Some(h) => h.split(',').map(|a| a.to_string()).collect(),
-            None => vec!["id".to_string(), "title".to_string(), "done".to_string()],
+            None => vec![
+                "id".to_string(),
+                "date".to_string(),
+                "title".to_string(),
+                "url".to_string(),
+                "done".to_string(),
+            ],
         };
         Todos { headers, records }
     }
@@ -200,7 +244,7 @@ impl Todos {
     pub fn done(&mut self, id: String) -> anyhow::Result<()> {
         let mut record = self.records.iter_mut().find(|r| r.id == id).unwrap();
         record.done = "✓".to_string();
-        self.print_list();
+        self.print_list(false);
         Ok(())
     }
 
@@ -211,36 +255,39 @@ impl Todos {
             None => bail!("The specified ID does not exist"),
         };
         self.records.remove(index);
-        self.print_list();
+        self.print_list(false);
         Ok(())
     }
 
-    pub fn add(&mut self, title: String) -> anyhow::Result<()> {
+    pub fn add(&mut self, date: String, title: String, url: String) -> anyhow::Result<()> {
         let last_id = match self.records.last() {
             Some(l) => l.id.parse().unwrap(),
             None => 0,
         };
         let id = last_id + 1;
         self.records
-            .push(Todo::new(id.to_string(), title, "".into()));
-        self.print_list();
+            .push(Todo::new(id.to_string(), date, title, url, "".into()));
+        self.print_list(false);
         Ok(())
     }
 
     pub fn clear(&mut self) -> anyhow::Result<()> {
         self.records = vec![];
-        self.print_list();
+        self.print_list(false);
         Ok(())
     }
 
-    pub fn print_list(&self) {
+    pub fn print_list(&self, all: bool) {
         let table = self
             .records
             .iter()
+            .filter(|r| if all { true } else { r.done.is_empty() })
             .map(|r| {
                 vec![
                     r.id.clone().cell().justify(Justify::Center),
+                    r.date.clone().cell().justify(Justify::Center),
                     r.title.clone().cell(),
+                    r.url.clone().cell(),
                     r.done.clone().cell().justify(Justify::Center),
                 ]
             })
