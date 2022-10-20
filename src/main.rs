@@ -72,8 +72,8 @@ fn add_command() -> Command {
                 exit(1);
             };
 
-            let date = c.string_flag("date").unwrap_or("".into());
-            let url = c.string_flag("url").unwrap_or("".into());
+            let date = c.string_flag("date").unwrap_or("".to_string());
+            let url = c.string_flag("url").unwrap_or("".to_string());
 
             let mut todos = Todos::read();
 
@@ -100,9 +100,8 @@ fn delete_command() -> Command {
             };
 
             let mut todos = Todos::read();
-
-            if todos.delete(id.clone()).is_err() {
-                eprintln!("The specified ID does not exist");
+            if let Err(e) = todos.delete(id.clone()) {
+                eprintln!("{}", e);
                 exit(1);
             }
 
@@ -124,9 +123,8 @@ fn done_command() -> Command {
             };
 
             let mut todos = Todos::read();
-
-            if todos.done(id.clone()).is_err() {
-                eprintln!("The specified ID does not exist");
+            if let Err(e) = todos.done(id.clone()) {
+                eprintln!("{}", e);
                 exit(1);
             }
 
@@ -245,8 +243,14 @@ impl Todos {
     }
 
     pub fn done(&mut self, id: String) -> anyhow::Result<()> {
-        let mut record = self.records.iter_mut().find(|r| r.id == id).unwrap();
-        record.done = "✓".to_string();
+        let todo = self.records.iter_mut().find(|r| r.id == id);
+
+        let mut todo = match todo {
+            Some(t) => t,
+            None => bail!("The specified ID does not exist"),
+        };
+
+        todo.done = "✓".to_string();
         self.print_list(false);
         Ok(())
     }
@@ -269,7 +273,7 @@ impl Todos {
         };
         let id = last_id + 1;
         self.records
-            .push(Todo::new(id.to_string(), date, title, url, "".into()));
+            .push(Todo::new(id.to_string(), date, title, url, "".to_string()));
         self.print_list(false);
         Ok(())
     }
